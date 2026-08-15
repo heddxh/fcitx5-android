@@ -105,6 +105,11 @@ endif()
 
 add_subdirectory(fcitx5-mozc)
 
+# Android presents candidates as a scrollable list instead of desktop-style pages.
+target_compile_definitions(mozc PRIVATE
+        FCITX5_MOZC_CANDIDATE_PAGE_SIZE=100
+        )
+
 if(TARGET mozc-static)
     # fcitx5-mozc's generic CMake source list does not mirror the
     # Android-specific select() entries from Mozc's Bazel build. Add

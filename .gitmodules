@@ -58,5 +58,5 @@
 	url = https://github.com/fcitx/fcitx5-libthai
 [submodule "plugin/mozc/src/main/cpp/fcitx5-mozc"]
 	path = plugin/mozc/src/main/cpp/fcitx5-mozc
-	url = https://github.com/fcitx-contrib/fcitx5-mozc
+	url = https://github.com/heddxh/fcitx5-mozc.git
 	update = none

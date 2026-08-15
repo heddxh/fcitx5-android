@@ -1,6 +1,6 @@
 {
     "uniqueId": "fcitx-contrib/fcitx5-mozc",
-    "artifactVersion": "fea9e7c",
+    "artifactVersion": "0d317a2",
     "description": "Mozc for Fcitx",
     "name": "fcitx-contrib/fcitx5-mozc",
     "website": "https://github.com/fcitx-contrib/fcitx5-mozc",
