@@ -105,9 +105,10 @@ endif()
 
 add_subdirectory(fcitx5-mozc)
 
-# Android presents candidates as a scrollable list instead of desktop-style pages.
+# Ask Mozc for rich prediction candidates during composition, matching the
+# behavior expected from a mobile software keyboard.
 target_compile_definitions(mozc PRIVATE
-        FCITX5_MOZC_CANDIDATE_PAGE_SIZE=100
+        FCITX5_MOZC_MOBILE_CANDIDATES=1
         )
 
 if(TARGET mozc-static)
