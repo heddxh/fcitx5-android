@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+android_sdk_root="$HOME/.android/sdk"
+
+if [[ ! -x "$android_sdk_root/cmdline-tools/latest/bin/sdkmanager" ]]; then
+    echo "Android SDK is missing; rerun .agents/setup" >&2
+    exit 1
+fi
+
+if ! command -v java >/dev/null; then
+    echo "Java is missing; rerun .agents/setup" >&2
+    exit 1
+fi
+
+printf 'sdk.dir=%s\n' "$android_sdk_root" >"$repo_root/local.properties"
+echo "Orb environment ready"

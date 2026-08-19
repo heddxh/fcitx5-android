@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+android_sdk_root="$HOME/.android/sdk"
+command_line_tools_version="13114758"
+
+step() {
+    printf '\n==> %s\n' "$1"
+}
+
+step "Installing system dependencies"
+packages=(openjdk-17-jdk-headless extra-cmake-modules gettext)
+missing_packages=()
+for package in "${packages[@]}"; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -Fq "install ok installed"; then
+        missing_packages+=("$package")
+    fi
+done
+if ((${#missing_packages[@]})); then
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing_packages[@]}"
+fi
+
+export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
+export ANDROID_HOME="$android_sdk_root"
+export ANDROID_SDK_ROOT="$android_sdk_root"
+
+step "Installing Android command-line tools"
+sdkmanager="$android_sdk_root/cmdline-tools/latest/bin/sdkmanager"
+if [[ ! -x "$sdkmanager" ]]; then
+    archive="$(mktemp --suffix=.zip)"
+    extracted="$(mktemp -d)"
+    trap 'rm -f "$archive"; rm -rf "$extracted"' EXIT
+    curl --fail --location --retry 3 \
+        "https://dl.google.com/android/repository/commandlinetools-linux-${command_line_tools_version}_latest.zip" \
+        --output "$archive"
+    unzip -q "$archive" -d "$extracted"
+    mkdir -p "$android_sdk_root/cmdline-tools"
+    rm -rf "$android_sdk_root/cmdline-tools/latest"
+    mv "$extracted/cmdline-tools" "$android_sdk_root/cmdline-tools/latest"
+    rm -f "$archive"
+    rm -rf "$extracted"
+    trap - EXIT
+fi
+
+compile_sdk="$(sed -nE 's/^[[:space:]]*const val compileSdk = ([0-9]+).*$/\1/p' "$repo_root/build-logic/convention/src/main/kotlin/Versions.kt")"
+cmake_version="$(sed -nE 's/^[[:space:]]*const val defaultCMake = "([^"]+)".*$/\1/p' "$repo_root/build-logic/convention/src/main/kotlin/Versions.kt")"
+ndk_version="$(sed -nE 's/^[[:space:]]*const val defaultNDK = "([^"]+)".*$/\1/p' "$repo_root/build-logic/convention/src/main/kotlin/Versions.kt")"
+build_tools_version="$(sed -nE 's/^[[:space:]]*const val defaultBuildTools = "([^"]+)".*$/\1/p' "$repo_root/build-logic/convention/src/main/kotlin/Versions.kt")"
+: "${compile_sdk:?Unable to read compileSdk from Versions.kt}"
+: "${cmake_version:?Unable to read defaultCMake from Versions.kt}"
+: "${ndk_version:?Unable to read defaultNDK from Versions.kt}"
+: "${build_tools_version:?Unable to read defaultBuildTools from Versions.kt}"
+
+step "Accepting Android SDK licenses"
+set +o pipefail
+yes | "$sdkmanager" --sdk_root="$android_sdk_root" --licenses >/dev/null
+license_status=${PIPESTATUS[1]}
+set -o pipefail
+if ((license_status != 0)); then
+    exit "$license_status"
+fi
+
+step "Installing Android SDK packages"
+"$sdkmanager" --sdk_root="$android_sdk_root" \
+    "platform-tools" \
+    "platforms;android-$compile_sdk" \
+    "build-tools;$build_tools_version" \
+    "ndk;$ndk_version" \
+    "cmake;$cmake_version"
+
+step "Persisting the repository development environment"
+profile_marker="# fcitx5-android orb environment"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+    cat >>"$HOME/.bash_profile" <<EOF
+
+$profile_marker
+if [[ "\${PWD}" == "$repo_root" || "\${PWD}" == "$repo_root/"* ]]; then
+    export JAVA_HOME="$JAVA_HOME"
+    export ANDROID_HOME="$android_sdk_root"
+    export ANDROID_SDK_ROOT="$android_sdk_root"
+    export PATH="\$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:\$ANDROID_SDK_ROOT/platform-tools:\$PATH"
+fi
+EOF
+fi
+printf 'sdk.dir=%s\n' "$android_sdk_root" >"$repo_root/local.properties"
+
+step "Initializing Git submodules"
+git -C "$repo_root" submodule update --init --recursive
+
+step "Warming the Gradle wrapper"
+"$repo_root/gradlew" --version
+
+step "Orb setup complete"
