@@ -7,6 +7,10 @@ plugins {
     id("org.fcitx.fcitx5.android.fcitx-component")
 }
 
+val mozcDataSha256 = providers.gradleProperty("mozcDataSha256")
+    .orElse(providers.environmentVariable("MOZC_DATA_SHA256"))
+    .orNull
+
 android {
     namespace = "org.fcitx.fcitx5.android.plugin.mozc"
 
@@ -19,6 +23,9 @@ android {
                 targets(
                     "mozc"
                 )
+                if (mozcDataSha256 != null) {
+                    arguments("-DMOZC_DATA_SHA256=$mozcDataSha256")
+                }
             }
         }
     }

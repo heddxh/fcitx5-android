@@ -9,7 +9,36 @@ on:
       - synchronize
 
 jobs:
+  generate_mozc_ut_data:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fetch source code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch Mozc sources
+        run: |
+          git submodule update --init --recursive --checkout plugin/mozc/src/main/cpp/fcitx5-mozc
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Generate Mozc UT data
+        run: .github/mozc-ut/build-data.sh
+
+      - name: Upload Mozc UT data
+        uses: actions/upload-artifact@v7
+        with:
+          name: mozc-ut-data
+          path: |
+            plugin/mozc/build/mozc/mozc_data.inc
+            plugin/mozc/build/mozc/mozc.data
+            plugin/mozc/build/mozc/mozc-ut-data.txt
+
   build_pull_request:
+    needs: generate_mozc_ut_data
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,6 +61,19 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           git submodule update --init --recursive --checkout plugin/mozc/src/main/cpp/fcitx5-mozc
+
+      - name: Download Mozc UT data
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        uses: actions/download-artifact@v7
+        with:
+          name: mozc-ut-data
+          path: plugin/mozc/build/mozc
+
+      - name: Configure Mozc UT data checksum
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        shell: bash
+        run: |
+          echo "MOZC_DATA_SHA256=$(sha256sum plugin/mozc/build/mozc/mozc_data.inc | cut -d' ' -f1)" >> "${GITHUB_ENV}"
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -71,6 +113,28 @@ jobs:
         run: |
           ./gradlew :app:assembleRelease
           ./gradlew :assembleReleasePlugins
+
+      - name: Report Mozc UT sizes
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        shell: bash
+        run: |
+          mkdir -p plugin/mozc/build/reports
+          {
+            cat plugin/mozc/build/mozc/mozc-ut-data.txt
+            find plugin/mozc/build/outputs/apk/release -type f -name '*.apk' \
+              -printf 'apk_bytes=%s apk=%f\n'
+            for apk in plugin/mozc/build/outputs/apk/release/*.apk; do
+              unzip -l "${apk}" | awk -v apk="$(basename "${apk}")" \
+                '/libmozc\.so$/ { print "libmozc_uncompressed_bytes=" $1 " apk=" apk " path=" $4 }'
+            done
+          } | tee plugin/mozc/build/reports/mozc-ut-sizes.txt
+
+      - name: Upload Mozc UT report
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: mozc-ut-report
+          path: plugin/mozc/build/reports/mozc-ut-sizes.txt
 
       - name: Upload app
         uses: actions/upload-artifact@v7
