@@ -9,16 +9,8 @@ on:
       - synchronize
 
 jobs:
-  build_pull_request:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-24.04
-          - macos-15-intel
-          - macos-26
-          - windows-2025
+  generate_mozc_ut_data:
+    runs-on: ubuntu-24.04
     steps:
       - name: Fetch source code
         uses: actions/checkout@v7
@@ -26,12 +18,49 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      # Mozc's large source tree is opt-in. Build it on one runner so the
-      # plugin is covered without multiplying the cost across the OS matrix.
       - name: Fetch Mozc sources
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           git submodule update --init --recursive --checkout plugin/mozc/src/main/cpp/fcitx5-mozc
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Generate Mozc UT data
+        run: .github/mozc-ut/build-data.sh
+
+      - name: Upload Mozc UT data
+        uses: actions/upload-artifact@v7
+        with:
+          name: mozc-ut-data
+          path: |
+            plugin/mozc/build/mozc/mozc_data.inc
+            plugin/mozc/build/mozc/mozc.data
+            plugin/mozc/build/mozc/mozc-ut-data.txt
+
+  build_pull_request:
+    needs: generate_mozc_ut_data
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fetch source code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch Mozc sources
+        run: |
+          git submodule update --init --recursive --checkout plugin/mozc/src/main/cpp/fcitx5-mozc
+
+      - name: Download Mozc UT data
+        uses: actions/download-artifact@v7
+        with:
+          name: mozc-ut-data
+          path: plugin/mozc/build/mozc
+
+      - name: Configure Mozc UT data checksum
+        shell: bash
+        run: |
+          echo "MOZC_DATA_SHA256=$(sha256sum plugin/mozc/build/mozc/mozc_data.inc | cut -d' ' -f1)" >> "${GITHUB_ENV}"
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -46,23 +75,10 @@ jobs:
         run: |
           sdkmanager --install "cmake;3.31.6"
 
-      - name: Install system dependencies (Ubuntu)
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+      - name: Install system dependencies
         run: |
           sudo apt update
           sudo apt install extra-cmake-modules gettext
-
-      - name: Install system dependencies (macOS)
-        if: ${{ startsWith(matrix.os, 'macos') }}
-        run: |
-          brew install extra-cmake-modules
-
-      - name: Install system dependencies (Windows)
-        if: ${{ startsWith(matrix.os, 'windows') }}
-        run: |
-          C:/msys64/usr/bin/pacman -Syu --noconfirm
-          C:/msys64/usr/bin/pacman -S --noconfirm mingw-w64-ucrt-x86_64-gettext mingw-w64-ucrt-x86_64-extra-cmake-modules
-          Add-Content $env:GITHUB_PATH "C:/msys64/ucrt64/bin"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -72,10 +88,30 @@ jobs:
           ./gradlew :app:assembleRelease
           ./gradlew :assembleReleasePlugins
 
+      - name: Report Mozc UT sizes
+        shell: bash
+        run: |
+          mkdir -p plugin/mozc/build/reports
+          {
+            cat plugin/mozc/build/mozc/mozc-ut-data.txt
+            find plugin/mozc/build/outputs/apk/release -type f -name '*.apk' \
+              -printf 'apk_bytes=%s apk=%f\n'
+            for apk in plugin/mozc/build/outputs/apk/release/*.apk; do
+              unzip -l "${apk}" | awk -v apk="$(basename "${apk}")" \
+                '/libmozc\.so$/ { print "libmozc_uncompressed_bytes=" $1 " apk=" apk " path=" $4 }'
+            done
+          } | tee plugin/mozc/build/reports/mozc-ut-sizes.txt
+
+      - name: Upload Mozc UT report
+        uses: actions/upload-artifact@v7
+        with:
+          name: mozc-ut-report
+          path: plugin/mozc/build/reports/mozc-ut-sizes.txt
+
       - name: Upload app
         uses: actions/upload-artifact@v7
         with:
-          name: app-${{ matrix.os }}
+          name: app-ubuntu
           path: app/build/outputs/apk/release/
 
       - name: Pack plugins
@@ -93,5 +129,5 @@ jobs:
       - name: Upload plugins
         uses: actions/upload-artifact@v7
         with:
-          name: plugins-${{ matrix.os }}
+          name: plugins-ubuntu
           path: plugins-to-upload
