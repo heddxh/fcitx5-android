@@ -10,7 +10,7 @@ readonly DICTIONARY_DIR="${MOZC_DIR}/src/data/dictionary_oss"
 readonly OUTPUT_DIR="${ROOT_DIR}/plugin/mozc/build/mozc"
 readonly MERGE_UT_COMMIT="15c1c64502b43e31d328012860376c03c3eaf633"
 readonly JAWIKI_INDEX="jawiki-20260601-pages-articles-multistream-index.txt.bz2"
-readonly JAWIKI_INDEX_B2="cd4c02ee67d98084b6e4909eea77ca464d3cca838595538c5219710927aa42630fa67110f45297252c11e8e8c84d5a3c346a378b848d86ca14b4eb84505c1f74"
+readonly JAWIKI_INDEX_B2="cd4c02ee67d98084b6e4909eea77ca464d3cca838595538c5219710927aa42630fa67110f45297252c11f8e8c84d5a3c346a378b848d86ca14b4eb84505c1f74"
 
 if [[ ! -f "${MOZC_DIR}/src/BUILD.bazel" ]]; then
     echo "Mozc sources are missing. Initialize the fcitx5-mozc submodule first." >&2
@@ -50,7 +50,7 @@ download_dictionary() {
     curl --fail --location --retry 3 --silent --show-error \
         "https://raw.githubusercontent.com/utuhiro78/mozcdic-ut-${name}/${commit}/mozcdic-ut-${name}.txt.bz2" \
         --output "${archive}"
-    echo "${sha256}  ${archive}" | sha256sum --check --status
+    echo "${sha256}  ${archive}" | sha256sum --check
     bzip2 --decompress --stdout "${archive}" >> "${WORK_DIR}/mozcdic-ut.txt"
 }
 
@@ -70,7 +70,7 @@ download_dictionary \
 curl --fail --location --retry 3 --silent --show-error \
     "https://dumps.wikimedia.org/jawiki/20260601/${JAWIKI_INDEX}" \
     --output "${WORK_DIR}/${JAWIKI_INDEX}"
-echo "${JAWIKI_INDEX_B2}  ${WORK_DIR}/${JAWIKI_INDEX}" | b2sum --check --status
+echo "${JAWIKI_INDEX_B2}  ${WORK_DIR}/${JAWIKI_INDEX}" | b2sum --check
 
 readonly INPUT_ENTRIES="$(wc --lines < "${WORK_DIR}/mozcdic-ut.txt")"
 python "${WORK_DIR}/merge-ut-dictionaries/src/merge/merge_dictionaries.py" \
